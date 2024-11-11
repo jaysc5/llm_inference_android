@@ -47,6 +47,9 @@ class ChatViewModel(
                                 currentMessageId = null
                                 // Re-enable text input
                                 setInputEnabled(true)
+
+                                val metrics = inferenceModel.getMetrics()
+                                _uiState.value.addMessage(metrics, MODEL_PREFIX)
                             }
                         }
                     }

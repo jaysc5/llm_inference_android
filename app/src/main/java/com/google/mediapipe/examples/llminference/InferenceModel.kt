@@ -7,7 +7,6 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.runBlocking
 
 class InferenceModel private constructor(context: Context) {
     private var llmInference: LlmInference
@@ -41,16 +40,6 @@ class InferenceModel private constructor(context: Context) {
                 tokenCount++
 
                 _partialResults.tryEmit(partialResult to done)
-
-                if (done) {
-                    val latency = lastTokenTime - startTime
-                    val throughput = tokenCount * 1000.0 / latency
-                    val tpot = if (tokenCount > 1) (latency - firstTokenTime) / (tokenCount - 1) else 0L
-
-                    _partialResults.tryEmit(
-                        "\nTTFT: ${firstTokenTime}ms\nTPOT: ${tpot}ms\nLatency: ${latency}ms\nThroughput: ${throughput} tokens/sec" to true
-                    )
-                }
             }
             .build()
 
@@ -66,6 +55,14 @@ class InferenceModel private constructor(context: Context) {
         // Add the gemma prompt prefix to trigger the response.
         val gemmaPrompt = prompt + "<start_of_turn>model\n"
         llmInference.generateResponseAsync(gemmaPrompt)
+    }
+
+    fun getMetrics(): String {
+        val latency = lastTokenTime - startTime
+        val throughput = if (latency > 0) tokenCount * 1000.0 / latency else 0.0
+        val tpot = if (tokenCount > 1) (latency - firstTokenTime) / (tokenCount - 1) else 0L
+
+        return "\nTTFT: ${firstTokenTime}ms\nTPOT: ${tpot}ms\nLatency: ${latency}ms\nThroughput: ${throughput} tokens/sec"
     }
 
     companion object {
