@@ -7,9 +7,15 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.runBlocking
 
 class InferenceModel private constructor(context: Context) {
     private var llmInference: LlmInference
+
+    private var startTime: Long = 0L
+    private var firstTokenTime: Long = 0L
+    private var lastTokenTime: Long = 0L
+    private var tokenCount: Int = 0
 
     private val modelExists: Boolean
         get() = File(MODEL_PATH).exists()
@@ -29,7 +35,22 @@ class InferenceModel private constructor(context: Context) {
             .setModelPath(MODEL_PATH)
             .setMaxTokens(1024)
             .setResultListener { partialResult, done ->
+                val currentTime = System.currentTimeMillis()
+                if (tokenCount == 0) firstTokenTime = currentTime - startTime
+                lastTokenTime = currentTime
+                tokenCount++
+
                 _partialResults.tryEmit(partialResult to done)
+
+                if (done) {
+                    val latency = lastTokenTime - startTime
+                    val throughput = tokenCount * 1000.0 / latency
+                    val tpot = if (tokenCount > 1) (latency - firstTokenTime) / (tokenCount - 1) else 0L
+
+                    _partialResults.tryEmit(
+                        "\nTTFT: ${firstTokenTime}ms\nTPOT: ${tpot}ms\nLatency: ${latency}ms\nThroughput: ${throughput} tokens/sec" to true
+                    )
+                }
             }
             .build()
 
@@ -37,6 +58,11 @@ class InferenceModel private constructor(context: Context) {
     }
 
     fun generateResponseAsync(prompt: String) {
+        startTime = System.currentTimeMillis()
+        firstTokenTime = 0L
+        lastTokenTime = 0L
+        tokenCount = 0
+
         // Add the gemma prompt prefix to trigger the response.
         val gemmaPrompt = prompt + "<start_of_turn>model\n"
         llmInference.generateResponseAsync(gemmaPrompt)
